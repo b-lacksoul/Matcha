@@ -908,7 +908,7 @@ local ratioSection = myGui:Section(autoTab, "Nanami")
 myGui:Checkbox(autoTab, ratioSection, "Enable Auto QTE", CONFIG.ratioQTE.enabled, function(s) CONFIG.ratioQTE.enabled = s if not s then RatioState.trackedTarget = nil RatioState.trackedRatioValue = nil RatioState.isScanning = false RatioState.hasTriggered = false end end)
 
 local swapSection = myGui:Section(autoTab, "Todo")
-myGui:Checkbox(autoTab, swapSection, "Auto Perfect Swap", CONFIG.perfectSwap.enabled, function(s) CONFIG.perfectSwap.enabled = s if not s then ResetSwapState() end end)
+myGui:Checkbox(autoTab, swapSection, "Perfect Swap", CONFIG.perfectSwap.enabled, function(s) CONFIG.perfectSwap.enabled = s if not s then ResetSwapState() end end)
 
 local espTab = myGui:Tab("ESP")
 local espSection = myGui:Section(espTab, "ESP Settings")
@@ -921,7 +921,7 @@ myGui:Colorpicker(espTab, colorSection, "Dummy Color", CONFIG.esp.colorDummy, fu
 myGui:Colorpicker(espTab, colorSection, "Items Color", CONFIG.esp.colorItems, function(c) CONFIG.esp.colorItems = c end)
 
 local utilTab = myGui:Tab("Utility")
-local domainSection = myGui:Section(utilTab, "Hiromi")
+local domainSection = myGui:Section(utilTab, "Defense Attorney")
 myGui:Checkbox(utilTab, domainSection, "Vote Tracker", CONFIG.domainVotes.enabled, function(s) CONFIG.domainVotes.enabled = s if not s then ResetDomainState() end end)
 
 local scriptSection = myGui:Section(utilTab, "Script")
