@@ -1,3 +1,7 @@
+-- V1.2
+-- Nanami QTE now works in Ult
+-- Randomization feature for Defense Attorney QTE
+
 -- UI by nulare
 local UILib = {}
 UILib.__index = UILib
