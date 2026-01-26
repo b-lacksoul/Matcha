@@ -1,6 +1,6 @@
--- V1.2
--- Nanami QTE now works in Ult
--- Randomization feature for Defense Attorney QTE
+-- V1.2.1
+-- Updated Nanami QTE, now works in ult.
+-- Added randomization for Defense Attorney QTE.
 
 -- UI by nulare
 local UILib = {}
@@ -567,13 +567,11 @@ local LocalPlayer = Players.LocalPlayer
 
 local KEYS = { W = 0x57, A = 0x41, S = 0x53, D = 0x44, F = 0x46, R = 0x52, G = 0x47 }
 local VALID_QTE_KEYS = { ["W"] = KEYS.W, ["A"] = KEYS.A, ["S"] = KEYS.S, ["D"] = KEYS.D }
-local SALARYMAN_MOVES = {"Cleaving Whirlwind", "Severance Kick", "Blunt Cut", "Stabalize"}
-local SALARYMAN_ULT_MOVES = {"Rising Cleave", "Blue Blade", "Salaryman's Fury"}
 local PERFECT_SWAP_MOVES = {"Swift Kick", "Brute Force", "Pebble Throw", "Elbow Drop"}
 local ULT_SWAP_MOVES = {"Idol's Debut", "Climax Jumping", "Dreams", "Brothers"}
 
 local QTEState = {detectedKey = "", detectedTime = 0, displayDuration = 1.0}
-local RatioState = { rWasPressed = false, isScanning = false, scanStartTime = 0, trackedTarget = nil, trackedRatioValue = nil, qteDetectedTime = 0, hasTriggered = false, targetHealthPercent = 1.0, calculatedDelay = 0.60, lastTriggerTime = 0, triggerCooldown = 0.3, wasSalaryman = false }
+local RatioState = { rWasPressed = false, isScanning = false, scanStartTime = 0, trackedTarget = nil, trackedRatioValue = nil, qteDetectedTime = 0, hasTriggered = false, targetHealthPercent = 1.0, calculatedDelay = 0.60, lastTriggerTime = 0, triggerCooldown = 0.3 }
 local SwapState = { rWasPressed = false, isScanning = false, scanStartTime = 0, wasInSkillInInfo = false, hasSeenInSkillInInfo = false, inSkillAppearedTime = 0, hasTriggeredM1 = false, lastTriggerTime = 0, triggerCooldown = 0.5, lastDebugPrint = 0 }
 local ESPState = {objects = {}, lastDiscovery = 0}
 local DomainState = { isActive = false, trackedDomain = nil, gWasPressed = false, waitingForChooseUI = false, waitStartTime = 0, confessCount = 0, silenceCount = 0, denialCount = 0, confessDrawing = nil, silenceDrawing = nil, denialDrawing = nil }
@@ -643,35 +641,7 @@ end
 -- RATIO QTE (Nanami)
 -- =====================
 local function HasSalarymanMoveset()
-    local char = GetWorkspaceCharacter()
-    local inUlt = char and char:GetAttribute("InUlt") == true
-
-    -- Check base moveset
-    local hasBase = HasMoveset("Salaryman") or HasMovesetMoves(SALARYMAN_MOVES)
-
-    -- Update tracking state when we detect base moveset
-    if hasBase then
-        RatioState.wasSalaryman = true
-        return true
-    end
-
-    -- Check if in ult with Salaryman ult moves
-    if inUlt and HasMovesetMoves(SALARYMAN_ULT_MOVES) then
-        RatioState.wasSalaryman = true
-        return true
-    end
-
-    -- If in ult and we were previously Salaryman, continue functioning
-    if inUlt and RatioState.wasSalaryman then
-        return true
-    end
-
-    -- Reset flag if we're not in ult and don't have Salaryman
-    if not inUlt then
-        RatioState.wasSalaryman = false
-    end
-
-    return false
+    return HasMoveset("Salaryman") or HasMoveset("Nanami")
 end
 
 local function FindOurRatioQTE()
