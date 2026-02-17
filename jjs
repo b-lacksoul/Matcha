@@ -1,5 +1,6 @@
--- V1.3
--- [Update] Completed Todo Perfect Swap
+-- V1.2.1
+-- Updated Nanami QTE, now works in ult.
+-- Added randomization for Defense Attorney QTE.
 
 -- UI by nulare
 local UILib = {}
@@ -571,7 +572,7 @@ local ULT_SWAP_MOVES = {"Idol's Debut", "Climax Jumping", "Dreams", "Brothers"}
 
 local QTEState = {detectedKey = "", detectedTime = 0, displayDuration = 1.0}
 local RatioState = { rWasPressed = false, isScanning = false, scanStartTime = 0, trackedTarget = nil, trackedRatioValue = nil, qteDetectedTime = 0, hasTriggered = false, targetHealthPercent = 1.0, calculatedDelay = 0.60, lastTriggerTime = 0, triggerCooldown = 0.3 }
-local SwapState = { rWasPressed = false, isScanning = false, scanStartTime = 0, effectsSnapshot = {}, hasTriggeredM1 = false, lastTriggerTime = 0, triggerCooldown = 0.5 }
+local SwapState = { rWasPressed = false, isScanning = false, scanStartTime = 0, swapConfirmed = false, effectsSnapshot = {}, hasTriggeredM1 = false }
 local ESPState = {objects = {}, lastDiscovery = 0}
 local DomainState = { isActive = false, trackedDomain = nil, gWasPressed = false, waitingForChooseUI = false, waitStartTime = 0, confessCount = 0, silenceCount = 0, denialCount = 0, confessDrawing = nil, silenceDrawing = nil, denialDrawing = nil }
 
@@ -697,22 +698,15 @@ end
 -- =====================
 -- PERFECT SWAP (Todo)
 -- =====================
-local function IsInUlt()
-    local char = GetWorkspaceCharacter()
-    if not char then return false end
-    if char:GetAttribute("InUlt") == true then return true end
-    return HasMovesetMoves(ULT_SWAP_MOVES)
-end
-
 local function HasPerfectSwapMoveset()
     local attr = GetMovesetAttr()
     if attr == "Switcher" or attr == "Todo" then return true end
     return HasMovesetMoves(PERFECT_SWAP_MOVES) or HasMovesetMoves(ULT_SWAP_MOVES)
 end
 
-local function IsInSkillInInfo()
+local function HasClapTarget()
     local info = SafeFind(GetWorkspaceCharacter(), "Info")
-    return info and info:FindFirstChild("InSkill") ~= nil
+    return info and info:FindFirstChild("ClapTarget") ~= nil
 end
 
 local function HasNoM1Flag()
@@ -720,8 +714,12 @@ local function HasNoM1Flag()
     return char and char:FindFirstChild("NoM1") ~= nil
 end
 
-local function ResetSwapState() SwapState.isScanning = false SwapState.effectsSnapshot = {} SwapState.hasTriggeredM1 = false end
-local function GetSwapModeName() return IsInUlt() and "ULT" or "STD" end
+local function ResetSwapState()
+    SwapState.isScanning = false
+    SwapState.swapConfirmed = false
+    SwapState.effectsSnapshot = {}
+    SwapState.hasTriggeredM1 = false
+end
 
 local function ProcessPerfectSwap()
     if not CONFIG.perfectSwap.enabled or not HasPerfectSwapMoveset() then return end
@@ -732,48 +730,51 @@ local function ProcessPerfectSwap()
     if rPressed and not SwapState.rWasPressed then
         SwapState.isScanning = true
         SwapState.scanStartTime = currentTime
+        SwapState.swapConfirmed = false
         SwapState.hasTriggeredM1 = false
         SwapState.effectsSnapshot = {}
-
-        -- Take initial snapshot of Effects folder
-        local effectsFolder = game.Workspace:FindFirstChild("Effects")
-        if effectsFolder then
-            for _, desc in ipairs(effectsFolder:GetDescendants()) do
-                SwapState.effectsSnapshot[desc.Address] = true
-            end
-        end
     end
 
     SwapState.rWasPressed = rPressed
 
     if not SwapState.isScanning then return end
 
-    -- Timeout after 2 seconds
+    -- Timeout
     if currentTime - SwapState.scanStartTime > CONFIG.perfectSwap.scanTimeout then
         ResetSwapState()
         return
     end
 
-    -- Check for Clap MeshPart in Effects folder
+    -- Phase 1: Wait for ClapTarget to confirm this is OUR swap
+    if not SwapState.swapConfirmed then
+        if HasClapTarget() then
+            SwapState.swapConfirmed = true
+            -- Take snapshot of Effects NOW (only after confirming our swap)
+            local effectsFolder = game.Workspace:FindFirstChild("Effects")
+            if effectsFolder then
+                for _, desc in ipairs(effectsFolder:GetDescendants()) do
+                    SwapState.effectsSnapshot[desc.Address] = true
+                end
+            end
+        end
+        return
+    end
+
+    -- Phase 2: Swap confirmed, look for new Clap in Effects
     local effectsFolder = game.Workspace:FindFirstChild("Effects")
     if effectsFolder then
         for _, desc in ipairs(effectsFolder:GetDescendants()) do
             if not SwapState.effectsSnapshot[desc.Address] then
-                -- New instance detected
                 if desc.ClassName == "MeshPart" and desc.Name == "Clap" then
-                    -- Clap MeshPart detected! Press M1 immediately
-                    local onCooldown = (currentTime - SwapState.lastTriggerTime) < SwapState.triggerCooldown
-                    if not SwapState.hasTriggeredM1 and not onCooldown and not HasNoM1Flag() then
+                    -- This is OUR swap's Clap - trigger M1
+                    if not SwapState.hasTriggeredM1 and not HasNoM1Flag() then
                         mouse1press()
                         mouse1release()
                         SwapState.hasTriggeredM1 = true
-                        SwapState.lastTriggerTime = currentTime
-                        SwapState.isScanning = false
-                        SwapState.effectsSnapshot = {}
                     end
+                    ResetSwapState()
                     return
                 end
-                -- Add to snapshot
                 SwapState.effectsSnapshot[desc.Address] = true
             end
         end
@@ -926,7 +927,7 @@ local function GetStatus()
     local parts = {}
     if CONFIG.autoQTE.enabled then local t = GetTime() if iskeypressed(KEYS.F) then table.insert(parts, "QTE: PAUSED") elseif QTEState.detectedKey ~= "" and (t - QTEState.detectedTime) < QTEState.displayDuration then table.insert(parts, "QTE: " .. QTEState.detectedKey) else table.insert(parts, "QTE: ON") end end
     if CONFIG.ratioQTE.enabled and HasSalarymanMoveset() then if RatioState.isScanning then table.insert(parts, "Ratio: SCAN") elseif RatioState.trackedRatioValue then table.insert(parts, "Ratio: ACTIVE") else table.insert(parts, "Ratio: ON") end end
-    if CONFIG.perfectSwap.enabled and HasPerfectSwapMoveset() then if SwapState.isScanning then table.insert(parts, "Swap: DETECTING") else table.insert(parts, "Swap: READY") end end
+    if CONFIG.perfectSwap.enabled and HasPerfectSwapMoveset() then if SwapState.swapConfirmed then table.insert(parts, "Swap: CONFIRMED") elseif SwapState.isScanning then table.insert(parts, "Swap: SCANNING") else table.insert(parts, "Swap: READY") end end
     if CONFIG.esp.enabled then local count = 0 for _ in pairs(ESPState.objects) do count = count + 1 end table.insert(parts, "ESP: " .. count) end
     if CONFIG.domainVotes.enabled and HasHiromiMoveset() then if DomainState.isActive then table.insert(parts, "Domain: ACTIVE") elseif DomainState.waitingForChooseUI then table.insert(parts, "Domain: WAIT") else table.insert(parts, "Domain: ON") end end
     return #parts == 0 and "Idle" or table.concat(parts, " | ")
