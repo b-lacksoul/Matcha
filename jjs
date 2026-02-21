@@ -1,6 +1,5 @@
--- V1.2.1
--- Updated Nanami QTE, now works in ult.
--- Added randomization for Defense Attorney QTE.
+-- V1.3
+-- Chara QTE added
 
 -- UI by nulare
 local UILib = {}
@@ -554,6 +553,7 @@ end
 local CONFIG = {
     autoQTE = { enabled = true, postPressDelay = 0.30, deviation = 0 },
     ratioQTE = { enabled = true, baseDelay = 0.60, minDelay = 0.40, healthFloor = 0.60 },
+    charaQTE = { enabled = true },
     perfectSwap = { enabled = true, scanTimeout = 2.0 },
     esp = { enabled = true, dummy = true, items = true, colorDummy = {255, 100, 100}, colorItems = {100, 255, 100} },
     domainVotes = { enabled = true },
@@ -572,6 +572,7 @@ local ULT_SWAP_MOVES = {"Idol's Debut", "Climax Jumping", "Dreams", "Brothers"}
 
 local QTEState = {detectedKey = "", detectedTime = 0, displayDuration = 1.0}
 local RatioState = { rWasPressed = false, isScanning = false, scanStartTime = 0, trackedTarget = nil, trackedRatioValue = nil, qteDetectedTime = 0, hasTriggered = false, targetHealthPercent = 1.0, calculatedDelay = 0.60, lastTriggerTime = 0, triggerCooldown = 0.3 }
+local CharaQTEState = { active = false }
 local SwapState = { rWasPressed = false, isScanning = false, scanStartTime = 0, swapConfirmed = false, effectsSnapshot = {}, hasTriggeredM1 = false }
 local ESPState = {objects = {}, lastDiscovery = 0}
 local DomainState = { isActive = false, trackedDomain = nil, gWasPressed = false, waitingForChooseUI = false, waitStartTime = 0, confessCount = 0, silenceCount = 0, denialCount = 0, confessDrawing = nil, silenceDrawing = nil, denialDrawing = nil }
@@ -782,6 +783,51 @@ local function ProcessPerfectSwap()
 end
 
 -- =====================
+-- CHARA QTE
+-- =====================
+local function RunCharaQTE()
+    if not CONFIG.charaQTE.enabled then
+        CharaQTEState.active = false
+        return
+    end
+
+    -- Slow poll: check if QTE UI exists
+    local uiComponent = SafeFind(LocalPlayer, "PlayerGui", "UI")
+    if not uiComponent then
+        CharaQTEState.active = false
+        return
+    end
+
+    local bar = uiComponent:FindFirstChild("Bar")
+    if not bar then return end
+    local line = bar:FindFirstChild("Line")
+    if not line then return end
+
+    -- QTE detected, switch to fast per-frame tracking
+    CharaQTEState.active = true
+    local barX = bar.AbsolutePosition.X
+    local barW = bar.AbsoluteSize.X
+    local centerX = barX + barW / 2
+    local prevDist = math.huge
+
+    while uiComponent.Parent and bar.Parent and line.Parent do
+        local lineCenterX = line.AbsolutePosition.X + line.AbsoluteSize.X / 2
+        local dist = math.abs(lineCenterX - centerX)
+
+        -- Line is moving away from center — it was closest last frame
+        if dist > prevDist then
+            mouse1click()
+            break
+        end
+
+        prevDist = dist
+        task.wait()
+    end
+
+    CharaQTEState.active = false
+end
+
+-- =====================
 -- ESP
 -- =====================
 local function CreateESPDrawing(name, color)
@@ -927,6 +973,7 @@ local function GetStatus()
     local parts = {}
     if CONFIG.autoQTE.enabled then local t = GetTime() if iskeypressed(KEYS.F) then table.insert(parts, "QTE: PAUSED") elseif QTEState.detectedKey ~= "" and (t - QTEState.detectedTime) < QTEState.displayDuration then table.insert(parts, "QTE: " .. QTEState.detectedKey) else table.insert(parts, "QTE: ON") end end
     if CONFIG.ratioQTE.enabled and HasSalarymanMoveset() then if RatioState.isScanning then table.insert(parts, "Ratio: SCAN") elseif RatioState.trackedRatioValue then table.insert(parts, "Ratio: ACTIVE") else table.insert(parts, "Ratio: ON") end end
+    if CONFIG.charaQTE.enabled then table.insert(parts, CharaQTEState.active and "Chara: ACTIVE" or "Chara: ON") end
     if CONFIG.perfectSwap.enabled and HasPerfectSwapMoveset() then if SwapState.swapConfirmed then table.insert(parts, "Swap: CONFIRMED") elseif SwapState.isScanning then table.insert(parts, "Swap: SCANNING") else table.insert(parts, "Swap: READY") end end
     if CONFIG.esp.enabled then local count = 0 for _ in pairs(ESPState.objects) do count = count + 1 end table.insert(parts, "ESP: " .. count) end
     if CONFIG.domainVotes.enabled and HasHiromiMoveset() then if DomainState.isActive then table.insert(parts, "Domain: ACTIVE") elseif DomainState.waitingForChooseUI then table.insert(parts, "Domain: WAIT") else table.insert(parts, "Domain: ON") end end
@@ -950,6 +997,9 @@ myGui:Checkbox(autoTab, ratioSection, "Enable Auto QTE", CONFIG.ratioQTE.enabled
 
 local swapSection = myGui:Section(autoTab, "Todo")
 myGui:Checkbox(autoTab, swapSection, "Auto Perfect Swap", CONFIG.perfectSwap.enabled, function(s) CONFIG.perfectSwap.enabled = s if not s then ResetSwapState() end end)
+
+local charaSection = myGui:Section(autoTab, "Chara")
+myGui:Checkbox(autoTab, charaSection, "Enable Auto QTE", CONFIG.charaQTE.enabled, function(s) CONFIG.charaQTE.enabled = s if not s then CharaQTEState.active = false end end)
 
 local espTab = myGui:Tab("ESP")
 local espSection = myGui:Section(espTab, "ESP Settings")
@@ -1000,6 +1050,7 @@ spawn(function() while running do pcall(UpdateESPPositions) task.wait() end end)
 spawn(function() while running do pcall(DiscoverESPObjects) task.wait(0.5) end end)
 spawn(function() while running do pcall(ProcessRatioQTE) task.wait() end end)
 spawn(function() while running do pcall(ProcessPerfectSwap) task.wait() end end)
+spawn(function() while running do pcall(RunCharaQTE) task.wait(0.2) end end)
 spawn(function() while running do pcall(ProcessDomainVotes) task.wait() end end)
 
 while running do task.wait(0.1) end
