@@ -1,5 +1,6 @@
--- V1.3
--- Chara QTE added
+-- V1.4
+-- Yuji & Mahito Auto Black Flash.
+-- Domain Health Tracker.
 
 -- UI by nulare
 local UILib = {}
@@ -555,8 +556,11 @@ local CONFIG = {
     ratioQTE = { enabled = true, baseDelay = 0.60, minDelay = 0.40, healthFloor = 0.60 },
     charaQTE = { enabled = true },
     perfectSwap = { enabled = true, scanTimeout = 2.0 },
-    esp = { enabled = true, dummy = true, items = true, colorDummy = {255, 100, 100}, colorItems = {100, 255, 100} },
+    esp = { enabled = true, dummy = true, items = true, colorDummy = {255, 100, 100}, colorItems = {100, 255, 100}, updateRate = 60 },
     domainVotes = { enabled = true },
+    autoBlackflashItadori = { enabled = false, timing = 0.285, usePingCompensation = false },
+    autoBlackflashMahito  = { enabled = false, timing = 0.285, usePingCompensation = false },
+    domainHealthESP = { enabled = true, nearbyThreshold = 40 },
 }
 
 -- =====================
@@ -565,17 +569,20 @@ local CONFIG = {
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 
-local KEYS = { W = 0x57, A = 0x41, S = 0x53, D = 0x44, F = 0x46, R = 0x52, G = 0x47 }
+local KEYS = { W = 0x57, A = 0x41, S = 0x53, D = 0x44, F = 0x46, R = 0x52, G = 0x47, THREE = 0x33, TWO = 0x32 }
 local VALID_QTE_KEYS = { ["W"] = KEYS.W, ["A"] = KEYS.A, ["S"] = KEYS.S, ["D"] = KEYS.D }
 local PERFECT_SWAP_MOVES = {"Swift Kick", "Brute Force", "Pebble Throw", "Elbow Drop"}
 local ULT_SWAP_MOVES = {"Idol's Debut", "Climax Jumping", "Dreams", "Brothers"}
-
 local QTEState = {detectedKey = "", detectedTime = 0, displayDuration = 1.0}
 local RatioState = { rWasPressed = false, isScanning = false, scanStartTime = 0, trackedTarget = nil, trackedRatioValue = nil, qteDetectedTime = 0, hasTriggered = false, targetHealthPercent = 1.0, calculatedDelay = 0.60, lastTriggerTime = 0, triggerCooldown = 0.3 }
 local CharaQTEState = { active = false }
 local SwapState = { rWasPressed = false, isScanning = false, scanStartTime = 0, swapConfirmed = false, effectsSnapshot = {}, hasTriggeredM1 = false }
 local ESPState = {objects = {}, lastDiscovery = 0}
 local DomainState = { isActive = false, trackedDomain = nil, gWasPressed = false, waitingForChooseUI = false, waitStartTime = 0, confessCount = 0, silenceCount = 0, denialCount = 0, confessDrawing = nil, silenceDrawing = nil, denialDrawing = nil }
+local currentPing = 0
+local BlackflashItadoriState = { waiting = false, nextPressTime = 0, wasDown = false }
+local BlackflashMahitoState  = { waiting = false, nextPressTime = 0, wasDown = false }
+local DomainHealthESPState = { drawings = {} }
 
 -- =====================
 -- UTILITY FUNCTIONS
@@ -619,6 +626,28 @@ local function HasMovesetMoves(moves)
     if not moveset then return false end
     for _, move in ipairs(moves) do if moveset:FindFirstChild(move) then return true end end
     return false
+end
+
+local function GetPing()
+    local ok, v = pcall(function()
+        return game:GetService("Stats"):FindFirstChild("Network")
+            :FindFirstChild("ServerStatsItem"):FindFirstChild("Data Ping").Value
+    end)
+    return (ok and tonumber(v)) or 0
+end
+
+local function HasBlackflashMoveset()
+    local m = GetMovesetAttr()
+    return m == "Itadori" or m == "Mahito"
+end
+
+local function HasBlackflashMove()
+    return HasMovesetMoves({"Focus Strike", "Divergent Fist"})
+end
+
+local function GetLocalHumanoid()
+    local char = GetWorkspaceCharacter()
+    return char and char:FindFirstChildOfClass("Humanoid")
 end
 
 -- =====================
@@ -783,6 +812,60 @@ local function ProcessPerfectSwap()
 end
 
 -- =====================
+-- AUTO BLACKFLASH (Itadori)
+-- =====================
+local function ProcessAutoBlackflashItadori()
+    if not CONFIG.autoBlackflashItadori.enabled then return end
+    if GetMovesetAttr() ~= "Itadori" or not HasBlackflashMove() then return end
+
+    local keyDown = iskeypressed(KEYS.THREE)
+
+    if keyDown and not BlackflashItadoriState.wasDown and not BlackflashItadoriState.waiting then
+        local timingSec = CONFIG.autoBlackflashItadori.timing
+        if CONFIG.autoBlackflashItadori.usePingCompensation then
+            timingSec = timingSec - (currentPing / 1000)
+        end
+        BlackflashItadoriState.nextPressTime = os.clock() + math.max(0, timingSec)
+        BlackflashItadoriState.waiting = true
+    end
+
+    if BlackflashItadoriState.waiting and os.clock() >= BlackflashItadoriState.nextPressTime then
+        keypress(KEYS.THREE)
+        keyrelease(KEYS.THREE)
+        BlackflashItadoriState.waiting = false
+    end
+
+    BlackflashItadoriState.wasDown = keyDown
+end
+
+-- =====================
+-- AUTO BLACKFLASH (Mahito)
+-- =====================
+local function ProcessAutoBlackflashMahito()
+    if not CONFIG.autoBlackflashMahito.enabled then return end
+    if GetMovesetAttr() ~= "Mahito" or not HasBlackflashMove() then return end
+
+    local keyDown = iskeypressed(KEYS.THREE)
+
+    if keyDown and not BlackflashMahitoState.wasDown and not BlackflashMahitoState.waiting then
+        local timingSec = CONFIG.autoBlackflashMahito.timing
+        if CONFIG.autoBlackflashMahito.usePingCompensation then
+            timingSec = timingSec - (currentPing / 1000)
+        end
+        BlackflashMahitoState.nextPressTime = os.clock() + math.max(0, timingSec)
+        BlackflashMahitoState.waiting = true
+    end
+
+    if BlackflashMahitoState.waiting and os.clock() >= BlackflashMahitoState.nextPressTime then
+        keypress(KEYS.THREE)
+        keyrelease(KEYS.THREE)
+        BlackflashMahitoState.waiting = false
+    end
+
+    BlackflashMahitoState.wasDown = keyDown
+end
+
+-- =====================
 -- CHARA QTE
 -- =====================
 local function RunCharaQTE()
@@ -874,6 +957,72 @@ local function DiscoverItems()
 end
 
 local function DiscoverESPObjects() pcall(DiscoverDummy) pcall(DiscoverItems) end
+
+-- =====================
+-- DOMAIN HEALTH ESP
+-- =====================
+
+local function CreateDomainHealthDrawing()
+    local d = Drawing.new("Text")
+    d.Font = Drawing.Fonts.System
+    d.Size = 16
+    d.Color = Color3.fromRGB(255, 255, 255)
+    d.Outline = true
+    d.Center = true
+    d.Visible = false
+    return d
+end
+
+local function UpdateDomainHealthESP()
+    if not CONFIG.domainHealthESP.enabled then
+        for _, entry in pairs(DomainHealthESPState.drawings) do entry.drawing.Visible = false end
+        return
+    end
+    local domainsFolder = game.Workspace:FindFirstChild("Domains")
+    local playerPos = GetPlayerPosition()
+    local nearbyThreshold = CONFIG.domainHealthESP.nearbyThreshold
+    local camera = game.Workspace.CurrentCamera
+    local vpSize = camera and camera.ViewportSize
+    local screenCenterX = vpSize and (vpSize.X / 2) or 960
+    local seenAddresses = {}
+
+    if domainsFolder then
+        for _, domain in ipairs(domainsFolder:GetChildren()) do
+            local domainMesh = (domain.Name == "Domain" and domain:IsA("MeshPart")) and domain or domain:FindFirstChild("Domain")
+            if domainMesh then
+                local addr = domainMesh.Address
+                seenAddresses[addr] = true
+
+                local entry = DomainHealthESPState.drawings[addr]
+                if not entry then
+                    entry = { drawing = CreateDomainHealthDrawing() }
+                    DomainHealthESPState.drawings[addr] = entry
+                end
+
+                local health = domainMesh:GetAttribute("Health") or domainMesh:GetAttribute("DomainHealth") or 0
+                entry.drawing.Text = "Domain HP: " .. math.floor(health)
+
+                local dist = playerPos and CalculateDistance(playerPos, domainMesh.Position) or math.huge
+                if dist <= nearbyThreshold then
+                    entry.drawing.Position = Vector2.new(screenCenterX, 50)
+                    entry.drawing.Visible = true
+                else
+                    local screenPos, onScreen = WorldToScreen(domainMesh.Position)
+                    entry.drawing.Visible = onScreen
+                    if onScreen then entry.drawing.Position = screenPos end
+                end
+            end
+        end
+    end
+
+    -- Prune stale drawings
+    for addr, entry in pairs(DomainHealthESPState.drawings) do
+        if not seenAddresses[addr] then
+            entry.drawing:Remove()
+            DomainHealthESPState.drawings[addr] = nil
+        end
+    end
+end
 
 -- =====================
 -- DOMAIN VOTE TRACKER (Hiromi)
@@ -977,6 +1126,9 @@ local function GetStatus()
     if CONFIG.perfectSwap.enabled and HasPerfectSwapMoveset() then if SwapState.swapConfirmed then table.insert(parts, "Swap: CONFIRMED") elseif SwapState.isScanning then table.insert(parts, "Swap: SCANNING") else table.insert(parts, "Swap: READY") end end
     if CONFIG.esp.enabled then local count = 0 for _ in pairs(ESPState.objects) do count = count + 1 end table.insert(parts, "ESP: " .. count) end
     if CONFIG.domainVotes.enabled and HasHiromiMoveset() then if DomainState.isActive then table.insert(parts, "Domain: ACTIVE") elseif DomainState.waitingForChooseUI then table.insert(parts, "Domain: WAIT") else table.insert(parts, "Domain: ON") end end
+    local moveset = GetMovesetAttr()
+    if CONFIG.autoBlackflashItadori.enabled and moveset == "Itadori" then table.insert(parts, BlackflashItadoriState.waiting and "BF: ARMED" or "BF: ON") end
+    if CONFIG.autoBlackflashMahito.enabled  and moveset == "Mahito"  then table.insert(parts, BlackflashMahitoState.waiting  and "BF: ARMED" or "BF: ON") end
     return #parts == 0 and "Idle" or table.concat(parts, " | ")
 end
 
@@ -998,6 +1150,14 @@ myGui:Checkbox(autoTab, ratioSection, "Enable Auto QTE", CONFIG.ratioQTE.enabled
 local swapSection = myGui:Section(autoTab, "Todo")
 myGui:Checkbox(autoTab, swapSection, "Auto Perfect Swap", CONFIG.perfectSwap.enabled, function(s) CONFIG.perfectSwap.enabled = s if not s then ResetSwapState() end end)
 
+local bfItadoriSection = myGui:Section(autoTab, "Blackflash - Itadori")
+myGui:Checkbox(autoTab, bfItadoriSection, "Enable", CONFIG.autoBlackflashItadori.enabled, function(s) CONFIG.autoBlackflashItadori.enabled = s if not s then BlackflashItadoriState.waiting = false end end)
+myGui:Checkbox(autoTab, bfItadoriSection, "Ping Adjust", CONFIG.autoBlackflashItadori.usePingCompensation, function(s) CONFIG.autoBlackflashItadori.usePingCompensation = s end)
+
+local bfMahitoSection = myGui:Section(autoTab, "Blackflash - Mahito")
+myGui:Checkbox(autoTab, bfMahitoSection, "Enable", CONFIG.autoBlackflashMahito.enabled, function(s) CONFIG.autoBlackflashMahito.enabled = s if not s then BlackflashMahitoState.waiting = false end end)
+myGui:Checkbox(autoTab, bfMahitoSection, "Ping Adjust", CONFIG.autoBlackflashMahito.usePingCompensation, function(s) CONFIG.autoBlackflashMahito.usePingCompensation = s end)
+
 local charaSection = myGui:Section(autoTab, "Chara")
 myGui:Checkbox(autoTab, charaSection, "Enable Auto QTE", CONFIG.charaQTE.enabled, function(s) CONFIG.charaQTE.enabled = s if not s then CharaQTEState.active = false end end)
 
@@ -1006,17 +1166,21 @@ local espSection = myGui:Section(espTab, "ESP Settings")
 myGui:Checkbox(espTab, espSection, "Enable ESP", CONFIG.esp.enabled, function(s) CONFIG.esp.enabled = s if not s then for _, obj in pairs(ESPState.objects) do if obj.drawing then obj.drawing.Visible = false end end end end)
 myGui:Checkbox(espTab, espSection, "Dummy ESP", CONFIG.esp.dummy, function(s) CONFIG.esp.dummy = s end)
 myGui:Checkbox(espTab, espSection, "Items ESP", CONFIG.esp.items, function(s) CONFIG.esp.items = s end)
+myGui:Slider(espTab, espSection, "Update Rate", CONFIG.esp.updateRate, function(v) CONFIG.esp.updateRate = v end, 10, 144, 5, "fps")
 
 local colorSection = myGui:Section(espTab, "ESP Colors")
 myGui:Colorpicker(espTab, colorSection, "Dummy Color", CONFIG.esp.colorDummy, function(c) CONFIG.esp.colorDummy = c end)
 myGui:Colorpicker(espTab, colorSection, "Items Color", CONFIG.esp.colorItems, function(c) CONFIG.esp.colorItems = c end)
+
+local domainHPSection = myGui:Section(espTab, "Domain Health")
+myGui:Checkbox(espTab, domainHPSection, "Enable", CONFIG.domainHealthESP.enabled, function(s) CONFIG.domainHealthESP.enabled = s if not s then for _, entry in pairs(DomainHealthESPState.drawings) do entry.drawing.Visible = false end end end)
 
 local utilTab = myGui:Tab("Utility")
 local domainSection = myGui:Section(utilTab, "Hiromi")
 myGui:Checkbox(utilTab, domainSection, "Vote Tracker", CONFIG.domainVotes.enabled, function(s) CONFIG.domainVotes.enabled = s if not s then ResetDomainState() end end)
 
 local scriptSection = myGui:Section(utilTab, "Script")
-myGui:Checkbox(utilTab, scriptSection, "Unload Script", false, function(s) if s then running = false ClearAllESP() DestroyVoteDrawings() myGui:Destroy() end end)
+myGui:Checkbox(utilTab, scriptSection, "Unload Script", false, function(s) if s then running = false ClearAllESP() DestroyVoteDrawings() for _, entry in pairs(DomainHealthESPState.drawings) do entry.drawing:Remove() end DomainHealthESPState.drawings = {} myGui:Destroy() end end)
 
 myGui:CreateSettingsTab("Settings")
 
@@ -1046,11 +1210,21 @@ spawn(function()
         end
     end
 end)
-spawn(function() while running do pcall(UpdateESPPositions) task.wait() end end)
+
+spawn(function()
+    while running do
+        pcall(UpdateESPPositions)
+        pcall(UpdateDomainHealthESP)
+        task.wait(1 / math.max(1, CONFIG.esp.updateRate))
+    end
+end)
 spawn(function() while running do pcall(DiscoverESPObjects) task.wait(0.5) end end)
-spawn(function() while running do pcall(ProcessRatioQTE) task.wait() end end)
-spawn(function() while running do pcall(ProcessPerfectSwap) task.wait() end end)
+spawn(function() while running do pcall(ProcessRatioQTE) task.wait(0.016) end end)
+spawn(function() while running do pcall(ProcessPerfectSwap) task.wait(0.01) end end)
 spawn(function() while running do pcall(RunCharaQTE) task.wait(0.2) end end)
-spawn(function() while running do pcall(ProcessDomainVotes) task.wait() end end)
+spawn(function() while running do pcall(ProcessDomainVotes) task.wait(0.05) end end)
+spawn(function() while running do currentPing = GetPing() task.wait(1) end end)
+spawn(function() while running do pcall(ProcessAutoBlackflashItadori) task.wait() end end)
+spawn(function() while running do pcall(ProcessAutoBlackflashMahito) task.wait() end end)
 
 while running do task.wait(0.1) end
